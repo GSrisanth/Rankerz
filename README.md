@@ -61,8 +61,13 @@ npm run install:all
 ```
 
 ### Environment Configuration
-The repository includes a ready-to-use template `.env.example`.
-For the server, `server/.env` is configured for local execution:
+The repository includes an environment configuration template in [`.env.example`](.env.example). Create your local environment file (`server/.env`):
+
+```bash
+cp .env.example server/.env
+```
+
+Define your environment variables securely:
 
 ```env
 PORT=5000
@@ -70,34 +75,35 @@ NODE_ENV=development
 CLIENT_URL=http://localhost:3000
 MONGODB_URI=mongodb://127.0.0.1:27017/rankerz_db
 REDIS_URL=redis://127.0.0.1:6379
-JWT_SECRET=rankerz_super_secret_jwt_key_cse3009_nosql_project
+JWT_SECRET=your_secure_random_jwt_secret_here
 JWT_EXPIRES_IN=7d
+
+# Initial Admin Seed Credentials (Set your own secure credentials)
 ADMIN_NAME=Prof. Harapriya Kar
 ADMIN_EMAIL=admin@rankerz.edu
-ADMIN_PASSWORD=AdminRankerz@2025
+ADMIN_PASSWORD=your_secure_admin_password
 ADMIN_STUDENT_ID=FACULTY-001
 ADMIN_DEPT=CSE
 ```
+
+> **Security Note:** Real `.env` files are strictly excluded via `.gitignore` and must never be committed to source control.
 
 ---
 
 ## 4. Seeding Database & Initializing Admin
 
-Run the automated seed script to populate realistic Indian university student profiles, active and completed contests, historical submissions, and Redis Sorted Sets:
+Run the automated seed script to populate sample student profiles, contests, attempts, and initial Redis Sorted Sets:
 
 ```bash
-# Seeds 35 students, 4 contests, 100+ submissions, and builds Redis Sorted Sets
+# Seeds initial demonstration datasets and provisions admin account
 npm run seed
 ```
 
-### Pre-Configured Demo Credentials
-| Role | Name | Email | Password |
-| :--- | :--- | :--- | :--- |
-| **Faculty Admin** | Prof. Harapriya Kar | `admin@rankerz.edu` | `AdminRankerz@2025` |
-| **Student 1** | Arjun Sharma (23BCE1001, CSE) | `arjun.sharma@rankerz.edu` | `StudentRankerz@2025` |
-| **Student 2** | Priya Patel (23BCE1042, CSE) | `priya.patel@rankerz.edu` | `StudentRankerz@2025` |
-
-*(Note: The login page includes 1-click quick fill buttons for instant testing!)*
+### Demonstration Accounts Setup
+When running locally for evaluation, the seed script sets up sample accounts for testing.
+- **Admin Account:** Created using the `ADMIN_EMAIL` and `ADMIN_PASSWORD` defined in your private `server/.env`.
+- **Student Accounts:** Sample students are seeded with passwords configured in your local environment.
+- **Quick Evaluation:** When running in local development mode, the login page (`/login`) includes interactive demo buttons for one-click reviewer evaluation without exposing credentials in public repositories.
 
 ---
 
