@@ -11,22 +11,29 @@ import {
 
 /**
  * Determines the API base URL.
- * 1. Checks VITE_API_URL environment variable (from Vercel or .env)
- * 2. In local dev (localhost/127.0.0.1), defaults to '/api' which Vite proxies to port 5000
- * 3. In production, defaults to the deployed Render backend: 'https://rankerz.onrender.com/api'
+ * 1. In local development (localhost / 127.0.0.1): defaults to '/api' which Vite proxies to port 5000.
+ * 2. In production (Vercel, preview deployments, etc.):
+ *    - Uses VITE_API_URL if it is an absolute http(s) URL.
+ *    - Defaults directly to the deployed Render backend: 'https://rankerz.onrender.com/api'.
+ *    - Never resolves to relative '/api' in production to avoid hitting Vercel's static server.
  */
 export function getApiBaseUrl(): string {
-  const envUrl = import.meta.env.VITE_API_URL;
-  if (envUrl && envUrl.trim() !== '') {
-    const trimmed = envUrl.trim().replace(/\/+$/, '');
-    return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
-  }
-
   if (typeof window !== 'undefined') {
     const host = window.location.hostname;
     if (host === 'localhost' || host === '127.0.0.1') {
+      const envUrl = import.meta.env.VITE_API_URL?.trim();
+      if (envUrl && envUrl.startsWith('http')) {
+        const trimmed = envUrl.replace(/\/+$/, '');
+        return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+      }
       return '/api';
     }
+  }
+
+  const envUrl = import.meta.env.VITE_API_URL?.trim();
+  if (envUrl && envUrl.startsWith('http')) {
+    const trimmed = envUrl.replace(/\/+$/, '');
+    return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
   }
 
   return 'https://rankerz.onrender.com/api';
@@ -40,18 +47,35 @@ function getAuthHeader(): Record<string, string> {
 }
 
 async function handleResponse<T>(res: Response): Promise<T> {
+  const contentType = res.headers.get('content-type') || '';
   let data: any;
-  try {
-    data = await res.json();
-  } catch {
-    if (!res.ok) {
-      throw new Error(`Server returned HTTP ${res.status}: ${res.statusText}`);
+
+  if (contentType.includes('application/json')) {
+    try {
+      data = await res.json();
+    } catch {
+      const text = await res.text().catch(() => '');
+      if (!res.ok) {
+        throw new Error(text || `Server returned HTTP ${res.status}: ${res.statusText}`);
+      }
+      return {} as T;
     }
-    return {} as T;
+  } else {
+    // Non-JSON response (e.g. HTML 404, 502 Bad Gateway)
+    const text = await res.text().catch(() => '');
+    if (!res.ok) {
+      if (res.status === 404) {
+        throw new Error(
+          'API endpoint returned 404 Not Found. Please verify backend availability at https://rankerz.onrender.com.'
+        );
+      }
+      throw new Error(`Server returned HTTP ${res.status}: ${text.slice(0, 150) || res.statusText}`);
+    }
+    return text as unknown as T;
   }
 
   if (!res.ok) {
-    throw new Error(data?.message || `Request failed with status ${res.status}`);
+    throw new Error(data?.message || data?.error || `Request failed with status ${res.status}`);
   }
   return data;
 }
@@ -63,7 +87,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   } catch (err: any) {
     if (err?.name === 'TypeError' && (err?.message === 'Failed to fetch' || err?.message?.includes('fetch') || err?.message?.includes('NetworkError'))) {
       throw new Error(
-        'Unable to reach Rankerz backend. The Render backend may be waking up from sleep (typically 30-50s on free tier). Please retry in a moment.'
+        'Unable to reach Rankerz backend. The Render service may be waking up from cold sleep (takes ~30-50s on free tier). Please retry in a moment.'
       );
     }
     throw err;

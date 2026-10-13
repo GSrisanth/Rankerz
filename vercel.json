@@ -5,6 +5,10 @@
       "destination": "https://rankerz.onrender.com/api/$1"
     },
     {
+      "source": "/api",
+      "destination": "https://rankerz.onrender.com/api"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

@@ -14,13 +14,22 @@ interface SocketContextType {
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
 
 function getSocketOrigin(): string | undefined {
-  const envSocket = import.meta.env.VITE_SOCKET_URL;
-  if (envSocket && envSocket.trim() !== '') {
-    return envSocket.trim().replace(/\/+$/, '');
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    // Localhost / 127.0.0.1 uses Vite dev proxy
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return undefined;
+    }
   }
 
-  const envApi = import.meta.env.VITE_API_URL;
-  if (envApi && envApi.trim() !== '') {
+  // If explicit absolute URL is supplied via environment
+  const envSocket = import.meta.env.VITE_SOCKET_URL?.trim();
+  if (envSocket && envSocket.startsWith('http')) {
+    return envSocket.replace(/\/+$/, '');
+  }
+
+  const envApi = import.meta.env.VITE_API_URL?.trim();
+  if (envApi && envApi.startsWith('http')) {
     try {
       const parsed = new URL(envApi);
       return parsed.origin;
@@ -29,13 +38,7 @@ function getSocketOrigin(): string | undefined {
     }
   }
 
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return undefined; // use Vite proxy in local dev
-    }
-  }
-
+  // Production fallback always points directly to deployed Render backend
   return 'https://rankerz.onrender.com';
 }
 
@@ -53,19 +56,19 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   useEffect(() => {
     const socketOrigin = getSocketOrigin();
-    console.log('[Socket.IO] Initializing client connection towards:', socketOrigin || 'window.location (local proxy)');
+    console.log('[Socket.IO] Connecting towards backend origin:', socketOrigin || 'window.location (local proxy)');
 
     // Connect to backend Socket.IO
     const socket = socketOrigin
       ? io(socketOrigin, {
           transports: ['websocket', 'polling'],
-          reconnectionAttempts: 15,
+          reconnectionAttempts: 20,
           reconnectionDelay: 2000,
           timeout: 10000,
         })
       : io({
           transports: ['websocket', 'polling'],
-          reconnectionAttempts: 15,
+          reconnectionAttempts: 20,
           reconnectionDelay: 2000,
           timeout: 10000,
         });
