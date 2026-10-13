@@ -47,14 +47,7 @@ const SAMPLE_STUDENTS = [
   { name: 'Saurabh Pandey', email: 'saurabh.p@rankerz.edu', studentIdCode: '23BCE1188', dept: 'CSE' },
 ];
 
-async function seed() {
-  console.log('===============================================================');
-  console.log('  RANKERZ SEED SCRIPT — Populating MongoDB & Redis Data Stores');
-  console.log('===============================================================');
-
-  await connectMongoDB();
-  await connectRedis();
-
+export async function runSeedLogic(): Promise<{ usersCount: number; contestsCount: number }> {
   try {
     // 1. Ensure Admin exists
     let admin = await User.findOne({ email: config.admin.email });
@@ -286,15 +279,28 @@ async function seed() {
       console.log(`    ✓ Redis Sorted Set populated: ${redisTotal} members in contest:${contestId}:leaderboard`);
     }
 
+    return {
+      usersCount: studentDocs.length + 1,
+      contestsCount: contestDocs.length,
+    };
+  } catch (error) {
+    console.error('[Seed] Error during seeding:', error);
+    throw error;
+  }
+}
+
+async function standaloneSeed() {
+  console.log('===============================================================');
+  console.log('  RANKERZ SEED SCRIPT — Populating MongoDB & Redis Data Stores');
+  console.log('===============================================================');
+
+  await connectMongoDB();
+  await connectRedis();
+
+  try {
+    const res = await runSeedLogic();
     console.log('===============================================================');
-    console.log('  SEEDING COMPLETED SUCCESSFULLY!');
-    console.log('===============================================================');
-    console.log('Admin Credentials:');
-    console.log(`  Email:    ${config.admin.email}`);
-    console.log(`  Password: ${config.admin.password}`);
-    console.log('Student Test Credentials:');
-    console.log(`  Email:    student1: arjun.sharma@rankerz.edu / StudentRankerz@2025`);
-    console.log(`  Email:    student2: priya.patel@rankerz.edu  / StudentRankerz@2025`);
+    console.log(`  SEEDING COMPLETED: ${res.usersCount} users, ${res.contestsCount} contests`);
     console.log('===============================================================');
   } catch (error) {
     console.error('[Seed] Error during seeding:', error);
@@ -304,4 +310,9 @@ async function seed() {
   }
 }
 
-seed();
+// Only run automatically if executed directly from CLI (e.g. tsx src/scripts/seed.ts)
+const isDirectCli = process.argv[1]?.includes('seed');
+if (isDirectCli) {
+  standaloneSeed();
+}
+

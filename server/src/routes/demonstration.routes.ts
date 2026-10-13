@@ -182,4 +182,25 @@ router.get('/cap-analysis', (req: Request, res: Response) => {
   });
 });
 
+// POST /api/demo/seed
+// Triggers the standard database seeding directly inside the running server environment
+router.post('/seed', async (req: Request, res: Response) => {
+  try {
+    const { runSeedLogic } = await import('../scripts/seed.js');
+    const result = await runSeedLogic();
+    res.json({
+      success: true,
+      message: 'Cloud databases seeded successfully!',
+      usersCount: result.usersCount,
+      contestsCount: result.contestsCount,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Seeding failed',
+    });
+  }
+});
+
 export default router;
+
