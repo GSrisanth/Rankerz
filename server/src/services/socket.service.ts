@@ -1,14 +1,20 @@
 import { Server as HttpServer } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { RedisPubSubService, ScoreUpdateEvent } from './redisPubSub.service.js';
-import { config } from '../config/env.js';
+import { isAllowedOrigin } from '../config/cors.js';
 
 let io: SocketIOServer | null = null;
 
 export function initSocketIO(httpServer: HttpServer): SocketIOServer {
   io = new SocketIOServer(httpServer, {
     cors: {
-      origin: [config.clientUrl, 'http://localhost:3000', 'http://127.0.0.1:3000'],
+      origin: (origin, callback) => {
+        if (isAllowedOrigin(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error(`Socket origin ${origin} not allowed by CORS`));
+        }
+      },
       methods: ['GET', 'POST'],
       credentials: true,
     },

@@ -22,6 +22,7 @@ export const ContestsPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Create Contest Modal
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -40,14 +41,16 @@ export const ContestsPage: React.FC = () => {
 
   const loadContests = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const res = await api.getContests({
         status: statusFilter,
         type: typeFilter,
       });
       setContests(res.contests);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load contests:', err);
+      setLoadError(err?.message || 'Failed to fetch contests');
     } finally {
       setLoading(false);
     }
@@ -167,6 +170,27 @@ export const ContestsPage: React.FC = () => {
           ))}
         </div>
       </div>
+
+      {/* Connection Notice / Load Error */}
+      {loadError && (
+        <div className="mb-6 p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0 text-amber-700 font-bold">
+              !
+            </div>
+            <div>
+              <div className="font-bold text-sm">Connection Notice</div>
+              <div className="text-xs text-amber-700 mt-0.5">{loadError}</div>
+            </div>
+          </div>
+          <button
+            onClick={loadContests}
+            className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Contests Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

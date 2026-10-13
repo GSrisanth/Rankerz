@@ -13,48 +13,99 @@ interface SocketContextType {
 
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
 
+function getSocketOrigin(): string | undefined {
+  const envSocket = import.meta.env.VITE_SOCKET_URL;
+  if (envSocket && envSocket.trim() !== '') {
+    return envSocket.trim().replace(/\/+$/, '');
+  }
+
+  const envApi = import.meta.env.VITE_API_URL;
+  if (envApi && envApi.trim() !== '') {
+    try {
+      const parsed = new URL(envApi);
+      return parsed.origin;
+    } catch {
+      // ignore
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return undefined; // use Vite proxy in local dev
+    }
+  }
+
+  return 'https://rankerz.onrender.com';
+}
+
 export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [activeContestId, setActiveContestId] = useState<string | null>(null);
   const [lastScoreEvent, setLastScoreEvent] = useState<ScoreUpdateEvent | null>(null);
   const socketRef = useRef<Socket | null>(null);
+  const activeContestIdRef = useRef<string | null>(null);
+
+  // Keep ref synchronized with activeContestId
+  useEffect(() => {
+    activeContestIdRef.current = activeContestId;
+  }, [activeContestId]);
 
   useEffect(() => {
+    const socketOrigin = getSocketOrigin();
+    console.log('[Socket.IO] Initializing client connection towards:', socketOrigin || 'window.location (local proxy)');
+
     // Connect to backend Socket.IO
-    const socket = io({
-      transports: ['websocket', 'polling'],
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-    });
+    const socket = socketOrigin
+      ? io(socketOrigin, {
+          transports: ['websocket', 'polling'],
+          reconnectionAttempts: 15,
+          reconnectionDelay: 2000,
+          timeout: 10000,
+        })
+      : io({
+          transports: ['websocket', 'polling'],
+          reconnectionAttempts: 15,
+          reconnectionDelay: 2000,
+          timeout: 10000,
+        });
 
     socketRef.current = socket;
 
     socket.on('connect', () => {
       setIsConnected(true);
-      console.log('[Socket.IO] Connected with ID:', socket.id);
-      // Re-join active contest room on reconnect
-      if (activeContestId) {
-        socket.emit('join_contest', activeContestId);
+      console.log('[Socket.IO] Connected successfully with ID:', socket.id);
+      // Re-join active contest room on connect/reconnect
+      if (activeContestIdRef.current) {
+        socket.emit('join_contest', activeContestIdRef.current);
+        console.log(`[Socket.IO] Rejoined contest room: contest:${activeContestIdRef.current}`);
       }
     });
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', (reason) => {
       setIsConnected(false);
-      console.log('[Socket.IO] Disconnected');
+      console.log('[Socket.IO] Disconnected:', reason);
+    });
+
+    socket.on('connect_error', (error) => {
+      console.warn('[Socket.IO] Connection error:', error.message);
     });
 
     socket.on('score_update', (event: ScoreUpdateEvent) => {
+      console.log('[Socket.IO] Received live score_update:', event);
       setLastScoreEvent(event);
     });
 
     return () => {
       socket.disconnect();
+      socketRef.current = null;
     };
   }, []);
 
   const joinContest = (contestId: string) => {
     if (!contestId) return;
     setActiveContestId(contestId);
+    activeContestIdRef.current = contestId;
     if (socketRef.current && socketRef.current.connected) {
       socketRef.current.emit('join_contest', contestId);
       console.log(`[Socket.IO] Joined contest room: contest:${contestId}`);
@@ -65,6 +116,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!contestId) return;
     if (activeContestId === contestId) {
       setActiveContestId(null);
+      activeContestIdRef.current = null;
     }
     if (socketRef.current && socketRef.current.connected) {
       socketRef.current.emit('leave_contest', contestId);

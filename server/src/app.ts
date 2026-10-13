@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { config } from './config/env.js';
+import { isAllowedOrigin } from './config/cors.js';
 import authRoutes from './routes/auth.routes.js';
 import contestRoutes from './routes/contest.routes.js';
 import participationRoutes from './routes/participation.routes.js';
@@ -17,7 +18,13 @@ export function createApp() {
   // Middleware
   app.use(
     cors({
-      origin: [config.clientUrl, 'http://localhost:3000', 'http://127.0.0.1:3000'],
+      origin: (origin, callback) => {
+        if (isAllowedOrigin(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error(`Origin ${origin} not allowed by CORS`));
+        }
+      },
       credentials: true,
     })
   );

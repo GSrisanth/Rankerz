@@ -9,7 +9,30 @@ import {
   Participation,
 } from '../types/index.js';
 
-const API_BASE = '/api';
+/**
+ * Determines the API base URL.
+ * 1. Checks VITE_API_URL environment variable (from Vercel or .env)
+ * 2. In local dev (localhost/127.0.0.1), defaults to '/api' which Vite proxies to port 5000
+ * 3. In production, defaults to the deployed Render backend: 'https://rankerz.onrender.com/api'
+ */
+export function getApiBaseUrl(): string {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl && envUrl.trim() !== '') {
+    const trimmed = envUrl.trim().replace(/\/+$/, '');
+    return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+  }
+
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return '/api';
+    }
+  }
+
+  return 'https://rankerz.onrender.com/api';
+}
+
+export const API_BASE = getApiBaseUrl();
 
 function getAuthHeader(): Record<string, string> {
   const token = localStorage.getItem('rankerz_token');
@@ -17,22 +40,44 @@ function getAuthHeader(): Record<string, string> {
 }
 
 async function handleResponse<T>(res: Response): Promise<T> {
-  const data = await res.json();
+  let data: any;
+  try {
+    data = await res.json();
+  } catch {
+    if (!res.ok) {
+      throw new Error(`Server returned HTTP ${res.status}: ${res.statusText}`);
+    }
+    return {} as T;
+  }
+
   if (!res.ok) {
-    throw new Error(data.message || `Request failed with status ${res.status}`);
+    throw new Error(data?.message || `Request failed with status ${res.status}`);
   }
   return data;
+}
+
+async function request<T>(url: string, init?: RequestInit): Promise<T> {
+  try {
+    const res = await fetch(url, init);
+    return await handleResponse<T>(res);
+  } catch (err: any) {
+    if (err?.name === 'TypeError' && (err?.message === 'Failed to fetch' || err?.message?.includes('fetch') || err?.message?.includes('NetworkError'))) {
+      throw new Error(
+        'Unable to reach Rankerz backend. The Render backend may be waking up from sleep (typically 30-50s on free tier). Please retry in a moment.'
+      );
+    }
+    throw err;
+  }
 }
 
 export const api = {
   // Auth
   async login(credentials: { email: string; password: string }): Promise<{ token: string; user: User }> {
-    const res = await fetch(`${API_BASE}/auth/login`, {
+    return request<{ token: string; user: User }>(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(credentials),
     });
-    return handleResponse(res);
   },
 
   async register(data: {
@@ -42,28 +87,25 @@ export const api = {
     studentIdCode: string;
     department: string;
   }): Promise<{ token: string; user: User }> {
-    const res = await fetch(`${API_BASE}/auth/register`, {
+    return request<{ token: string; user: User }>(`${API_BASE}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return handleResponse(res);
   },
 
   async getMe(): Promise<{ user: User }> {
-    const res = await fetch(`${API_BASE}/auth/me`, {
+    return request<{ user: User }>(`${API_BASE}/auth/me`, {
       headers: { ...getAuthHeader() },
     });
-    return handleResponse(res);
   },
 
   async updateProfile(updates: { name?: string; department?: string }): Promise<{ user: User }> {
-    const res = await fetch(`${API_BASE}/auth/profile`, {
+    return request<{ user: User }>(`${API_BASE}/auth/profile`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
       body: JSON.stringify(updates),
     });
-    return handleResponse(res);
   },
 
   // Contests
@@ -71,47 +113,43 @@ export const api = {
     const query = new URLSearchParams();
     if (params?.status) query.append('status', params.status);
     if (params?.type) query.append('type', params.type);
-    const res = await fetch(`${API_BASE}/contests?${query.toString()}`);
-    return handleResponse(res);
+    const queryString = query.toString();
+    const url = queryString ? `${API_BASE}/contests?${queryString}` : `${API_BASE}/contests`;
+    return request<{ count: number; contests: Contest[] }>(url);
   },
 
   async getContestById(contestId: string): Promise<{ contest: Contest }> {
-    const res = await fetch(`${API_BASE}/contests/${contestId}`);
-    return handleResponse(res);
+    return request<{ contest: Contest }>(`${API_BASE}/contests/${contestId}`);
   },
 
   async createContest(data: Partial<Contest>): Promise<{ contest: Contest }> {
-    const res = await fetch(`${API_BASE}/contests`, {
+    return request<{ contest: Contest }>(`${API_BASE}/contests`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
       body: JSON.stringify(data),
     });
-    return handleResponse(res);
   },
 
   async updateContest(contestId: string, updates: Partial<Contest>): Promise<{ contest: Contest }> {
-    const res = await fetch(`${API_BASE}/contests/${contestId}`, {
+    return request<{ contest: Contest }>(`${API_BASE}/contests/${contestId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
       body: JSON.stringify(updates),
     });
-    return handleResponse(res);
   },
 
   async deleteContest(contestId: string): Promise<{ success: boolean; message: string }> {
-    const res = await fetch(`${API_BASE}/contests/${contestId}`, {
+    return request<{ success: boolean; message: string }>(`${API_BASE}/contests/${contestId}`, {
       method: 'DELETE',
       headers: { ...getAuthHeader() },
     });
-    return handleResponse(res);
   },
 
   async rebuildLeaderboard(contestId: string): Promise<{ restoredCount: number; message: string }> {
-    const res = await fetch(`${API_BASE}/contests/${contestId}/rebuild-leaderboard`, {
+    return request<{ restoredCount: number; message: string }>(`${API_BASE}/contests/${contestId}/rebuild-leaderboard`, {
       method: 'POST',
       headers: { ...getAuthHeader() },
     });
-    return handleResponse(res);
   },
 
   // Leaderboard (Redis Sorted Set)
@@ -131,11 +169,19 @@ export const api = {
     if (params?.offset !== undefined) query.append('offset', String(params.offset));
     if (params?.department) query.append('department', params.department);
     if (params?.search) query.append('search', params.search);
+    const queryString = query.toString();
+    const url = queryString ? `${API_BASE}/contests/${contestId}/leaderboard?${queryString}` : `${API_BASE}/contests/${contestId}/leaderboard`;
 
-    const res = await fetch(`${API_BASE}/contests/${contestId}/leaderboard?${query.toString()}`, {
+    return request<{
+      source: string;
+      totalParticipants: number;
+      limit: number;
+      offset: number;
+      contest: { id: string; title: string; maxScore: number; status: string };
+      leaderboard: LeaderboardEntry[];
+    }>(url, {
       headers: { ...getAuthHeader() },
     });
-    return handleResponse(res);
   },
 
   async getMyRank(contestId: string): Promise<{
@@ -148,31 +194,36 @@ export const api = {
     user?: any;
     message?: string;
   }> {
-    const res = await fetch(`${API_BASE}/contests/${contestId}/leaderboard/me`, {
+    return request<{
+      isRanked: boolean;
+      rank?: number;
+      score?: number;
+      maxScore?: number;
+      totalParticipants?: number;
+      attemptsCount?: number;
+      user?: any;
+      message?: string;
+    }>(`${API_BASE}/contests/${contestId}/leaderboard/me`, {
       headers: { ...getAuthHeader() },
     });
-    return handleResponse(res);
   },
 
   // Participation
   async registerForContest(contestId: string): Promise<{ participation: Participation; message: string }> {
-    const res = await fetch(`${API_BASE}/contests/${contestId}/register`, {
+    return request<{ participation: Participation; message: string }>(`${API_BASE}/contests/${contestId}/register`, {
       method: 'POST',
       headers: { ...getAuthHeader() },
     });
-    return handleResponse(res);
   },
 
   async getMyStatus(contestId: string): Promise<{ isRegistered: boolean; participation: any; rank: number | null }> {
-    const res = await fetch(`${API_BASE}/contests/${contestId}/my-status`, {
+    return request<{ isRegistered: boolean; participation: any; rank: number | null }>(`${API_BASE}/contests/${contestId}/my-status`, {
       headers: { ...getAuthHeader() },
     });
-    return handleResponse(res);
   },
 
   async getParticipants(contestId: string): Promise<{ count: number; participants: any[] }> {
-    const res = await fetch(`${API_BASE}/contests/${contestId}/participants`);
-    return handleResponse(res);
+    return request<{ count: number; participants: any[] }>(`${API_BASE}/contests/${contestId}/participants`);
   },
 
   // Submissions
@@ -180,65 +231,58 @@ export const api = {
     contestId: string,
     data: { studentId?: string; score: number; completionTimeMs?: number; idempotencyKey?: string }
   ): Promise<{ result: any; message: string }> {
-    const res = await fetch(`${API_BASE}/contests/${contestId}/submissions`, {
+    return request<{ result: any; message: string }>(`${API_BASE}/contests/${contestId}/submissions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
       body: JSON.stringify(data),
     });
-    return handleResponse(res);
   },
 
   async getSubmissions(contestId: string, params?: { limit?: number; offset?: number }): Promise<{ total: number; submissions: Submission[] }> {
     const query = new URLSearchParams();
     if (params?.limit) query.append('limit', String(params.limit));
     if (params?.offset !== undefined) query.append('offset', String(params.offset));
+    const queryString = query.toString();
+    const url = queryString ? `${API_BASE}/contests/${contestId}/submissions?${queryString}` : `${API_BASE}/contests/${contestId}/submissions`;
 
-    const res = await fetch(`${API_BASE}/contests/${contestId}/submissions?${query.toString()}`);
-    return handleResponse(res);
+    return request<{ total: number; submissions: Submission[] }>(url);
   },
 
   // Analytics (MongoDB Aggregations)
   async getPlatformOverview(): Promise<{ data: any }> {
-    const res = await fetch(`${API_BASE}/analytics/overview`);
-    return handleResponse(res);
+    return request<{ data: any }>(`${API_BASE}/analytics/overview`);
   },
 
   async getContestAnalytics(contestId: string): Promise<{ contestId: string; analytics: ContestAnalytics }> {
-    const res = await fetch(`${API_BASE}/analytics/contests/${contestId}`);
-    return handleResponse(res);
+    return request<{ contestId: string; analytics: ContestAnalytics }>(`${API_BASE}/analytics/contests/${contestId}`);
   },
 
   async getStudentAnalytics(): Promise<{ analytics: StudentAnalytics }> {
-    const res = await fetch(`${API_BASE}/analytics/users/me`, {
+    return request<{ analytics: StudentAnalytics }>(`${API_BASE}/analytics/users/me`, {
       headers: { ...getAuthHeader() },
     });
-    return handleResponse(res);
   },
 
   // Demonstrations & Viva
   async getRedisOps(contestId?: string): Promise<{ operations: any[]; contestId: string }> {
     const url = contestId ? `${API_BASE}/demo/redis-ops?contestId=${contestId}` : `${API_BASE}/demo/redis-ops`;
-    const res = await fetch(url);
-    return handleResponse(res);
+    return request<{ operations: any[]; contestId: string }>(url);
   },
 
   async simulateSubmission(contestId?: string): Promise<{ result: any; contestTitle: string }> {
-    const res = await fetch(`${API_BASE}/demo/simulate-submission`, {
+    return request<{ result: any; contestTitle: string }>(`${API_BASE}/demo/simulate-submission`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
       body: JSON.stringify({ contestId }),
     });
-    return handleResponse(res);
   },
 
   async getCapAnalysis(): Promise<any> {
-    const res = await fetch(`${API_BASE}/demo/cap-analysis`);
-    return handleResponse(res);
+    return request<any>(`${API_BASE}/demo/cap-analysis`);
   },
 
   // Health
   async getHealthStatus(): Promise<HealthStatus> {
-    const res = await fetch(`${API_BASE}/health`);
-    return handleResponse(res);
+    return request<HealthStatus>(`${API_BASE}/health`);
   },
 };

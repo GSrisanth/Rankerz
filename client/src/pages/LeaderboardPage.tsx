@@ -41,6 +41,7 @@ export const LeaderboardPage: React.FC = () => {
   const [limit, setLimit] = useState<number>(10);
   const [offset, setOffset] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Modals & Real-time highlights
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState<boolean>(false);
@@ -52,6 +53,8 @@ export const LeaderboardPage: React.FC = () => {
   // 1. Fetch contests on mount
   useEffect(() => {
     async function loadContests() {
+      setLoading(true);
+      setError(null);
       try {
         const res = await api.getContests();
         setContests(res.contests);
@@ -65,8 +68,11 @@ export const LeaderboardPage: React.FC = () => {
           const defaultId = live ? live._id : res.contests[0]?._id || '';
           setSelectedContestId(defaultId);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Failed to load contests:', err);
+        setError(err?.message || 'Failed to connect to backend server');
+      } finally {
+        setLoading(false);
       }
     }
     loadContests();
@@ -88,6 +94,7 @@ export const LeaderboardPage: React.FC = () => {
     if (!isBackground) setLoading(true);
 
     try {
+      setError(null);
       const [contestRes, lbRes, partRes] = await Promise.all([
         api.getContestById(selectedContestId),
         api.getLeaderboard(selectedContestId, {
@@ -103,8 +110,11 @@ export const LeaderboardPage: React.FC = () => {
       setEntries(lbRes.leaderboard);
       setTotalCount(lbRes.totalParticipants);
       setParticipants(partRes.participants);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch leaderboard:', err);
+      if (!isBackground) {
+        setError(err?.message || 'Failed to fetch leaderboard records');
+      }
     } finally {
       if (!isBackground) setLoading(false);
     }
@@ -265,6 +275,45 @@ export const LeaderboardPage: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Backend Connection Notice / Error Alert */}
+      {error && (
+        <div className="mb-6 p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0 text-amber-700 font-bold">
+              !
+            </div>
+            <div>
+              <div className="font-bold text-sm">Connection Notice</div>
+              <div className="text-xs text-amber-700 mt-0.5">{error}</div>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setError(null);
+              if (!selectedContestId) {
+                window.location.reload();
+              } else {
+                fetchLeaderboard();
+              }
+            }}
+            className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* Empty State when no contests exist */}
+      {!loading && !error && contests.length === 0 && (
+        <div className="p-10 rounded-2xl bg-white border border-slate-200 text-center shadow-sm mb-8">
+          <Trophy className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          <h3 className="text-base font-bold text-slate-800">No Contests Available</h3>
+          <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
+            There are currently no active or scheduled contests in the database. Head to the Contests page or Admin dashboard to create one.
+          </p>
+        </div>
+      )}
 
       {/* Admin Simulation Banner */}
       {user?.role === 'admin' && (

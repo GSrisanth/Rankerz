@@ -7,7 +7,7 @@ dotenv.config();
 export const config = {
   port: parseInt(process.env.PORT || '5000', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
-  clientUrl: process.env.CLIENT_URL || 'http://localhost:3000',
+  clientUrl: process.env.CLIENT_URL || 'https://rankerz.vercel.app',
   jwtSecret: process.env.JWT_SECRET || 'rankerz_super_secret_jwt_key_cse3009_nosql_project',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
   mongodbUri: process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/rankerz_db',
